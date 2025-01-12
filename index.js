@@ -221,12 +221,10 @@ async function run() {
             res.send({ paymentResult, deletedResult })
         })
         // get admin stats
-        app.get('/admin-stats', async(req, res) => {
+        app.get('/admin-stats', verifyToken, verifyAdmin, async(req, res) => {
             const users = await userCollection.estimatedDocumentCount()
             const menuItems = await menusCollection.estimatedDocumentCount()
             const orders = await paymentCollection.estimatedDocumentCount()
-            // const payments = await paymentCollection.find().toArray()
-            // const revenue = payments.reduce((prevValue, current) => prevValue + current.price,0)
             const result = await paymentCollection.aggregate([
                 {
                     $group: {
@@ -243,6 +241,41 @@ async function run() {
                 revenue
 
             })
+        })
+        // get order-stats
+        app.get('/order-stats',verifyToken, verifyAdmin,  async(req,res) => {
+            const result = await paymentCollection.aggregate([
+                {
+                    $unwind: '$menuItemIds'
+                },
+                {
+                    $lookup: {
+                        from: 'menus',
+                        localField: 'menuItemIds',
+                        foreignField: '_id',
+                        as: 'menuItems'
+                    }
+                },
+                {
+                    $unwind: '$menuItems'
+                },
+                {
+                    $group: {
+                        _id : '$menuItems.category',
+                        quantity: { $sum: 1 },
+                        revenue: { $sum: '$menuItems.price'}
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        category: '$_id',
+                        quantity: '$quantity',
+                        revenue: '$revenue'
+                    }
+                }
+            ]).toArray()
+            res.send(result)
         })
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
